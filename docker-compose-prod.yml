@@ -1,0 +1,66 @@
+services:
+  rag-api:
+    image: ${APP_IMAGE:-hantae/rag-api:latest}
+    container_name: rag-api
+    depends_on:
+      rag-redis:
+        condition: service_started
+      rag-chroma:
+        condition: service_started
+      rag-postgres:
+        condition: service_started
+    env_file:
+      - .env.production
+    environment:
+      APP_ENV: production
+    ports:
+      - "${PORT:-18080}:${PORT:-18080}"
+    restart: unless-stopped
+
+  rag-redis:
+    image: docker.io/library/redis:7.4-alpine
+    container_name: rag-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  rag-redis-insight:
+    image: redis/redisinsight:latest
+    ports:
+      - "5540:5540"
+    depends_on:
+      - rag-redis
+
+  rag-chroma:
+    image: chromadb/chroma:latest
+    container_name: rag-chroma
+    volumes:
+      - chroma-data:/chroma/chroma
+    restart: unless-stopped
+
+  rag-postgres:
+    image: postgres:16-alpine
+    container_name: rag-postgres
+    environment:
+      POSTGRES_DB: rag
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: idis1234
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag_user -d rag_aux"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+  chroma-data:
+  postgres-data:

@@ -1,0 +1,26 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "dev",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": [
+        "app.main:app",
+        "--env-file",
+        ".env.development",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "18080"
+      ],
+      "env": {
+        "APP_ENV": "development"
+      },
+      "console": "integratedTerminal",
+      "jinja": true,
+      "justMyCode": true
+    }
+  ]
+}
