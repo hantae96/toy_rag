@@ -5,7 +5,7 @@ from typing import cast
 from fastapi import Depends
 from redis import Redis
 
-from app.config.core_dependencies import get_redis_client, get_settings
+from app.config.core_dependencies import create_redis_client, get_settings
 from app.config.env_setting import Settings
 
 logger = logging.getLogger(__name__)
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class CacheRepository:
     def __init__(
         self,
-        redis_client: Annotated[Redis, Depends(get_redis_client)],
+        redis_client: Annotated[Redis, Depends(create_redis_client)],
         settings: Annotated[Settings, Depends(get_settings)],
         cache_prefix: str | None = None,
     ) -> None:

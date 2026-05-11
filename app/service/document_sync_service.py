@@ -2,7 +2,7 @@ import logging
 from typing import Annotated
 
 from bs4 import BeautifulSoup
-from bs4.element import NavigableString, Tag
+from bs4.element import NavigableString, Tag, Comment
 from fastapi import Depends
 from fastapi.concurrency import run_in_threadpool
 
@@ -199,6 +199,10 @@ class DocumentSyncService:
         for tag in soup(["script", "style"]):
             tag.decompose()
 
+
+        for comment in soup.find_all(string=lambda text: isinstance(text,Comment)):
+            comment.extract()
+
         sequence: list[dict[str, str]] = []
         for node in soup.descendants:
             if isinstance(node, Tag) and node.name == "img":
@@ -213,6 +217,9 @@ class DocumentSyncService:
                 continue
 
             if isinstance(node, NavigableString):
+                if isinstance(node,Comment):
+                    continue
+
                 text = " ".join(str(node).split())
                 if text:
                     sequence.append({"type": "text", "value": text})

@@ -9,11 +9,12 @@ from langchain_openai import ChatOpenAI
 from redis import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.config.core_dependencies import create_redis_client, create_vector_store
 from app.config.env_setting import Settings
 from app.core.database import (
-    create_manual_db_engine,
-    create_rag_db_engine,
-    create_session_factory,
+    get_manual_db_engine,
+    get_rag_db_engine,
+    get_session_factory,
 )
 from app.models.api.image_models import ImageDescriptions
 from app.repository.cache_repository import CacheRepository
@@ -29,36 +30,8 @@ logging.basicConfig(
     level=logging.INFO,
     format="[%(levelname)s] %(name)s - %(message)s - %(asctime)s ",
 )
+
 logging.getLogger().setLevel(logging.INFO)
-
-
-def _create_redis_client(settings: Settings) -> Redis:
-    redis_client = Redis(
-        host=settings.REDIS_HOST.strip(),
-        port=settings.REDIS_PORT,
-        db=settings.REDIS_DB,
-        password=settings.REDIS_PASSWORD,
-        ssl=settings.REDIS_SSL,
-        decode_responses=True,
-        socket_timeout=5,
-        socket_connect_timeout=5,
-    )
-    redis_client.ping()
-    return redis_client
-
-
-def _create_vector_store(settings: Settings) -> Chroma:
-    embeddings = OllamaEmbeddings(model="bge-m3")
-    chroma_client = chromadb.HttpClient(
-        host=settings.CHROMA_HOST,
-        port=settings.CHROMA_PORT,
-        ssl=settings.CHROMA_SSL,
-    )
-    return Chroma(
-        collection_name=settings.CHROMA_COLLECTION_NAME,
-        embedding_function=embeddings,
-        client=chroma_client,
-    )
 
 
 async def _run_startup_sync(
@@ -101,14 +74,14 @@ async def _run_startup_sync(
 async def lifespan(app: FastAPI):
     settings = Settings()  # type: ignore[call-arg] Setting은 런타임에서 처리
 
-    manual_db_engine = create_manual_db_engine(settings=settings)
-    manual_db_session_factory = create_session_factory(manual_db_engine)
+    manual_db_engine = get_manual_db_engine(settings=settings)
+    manual_db_session_factory = get_session_factory(manual_db_engine)
 
-    rag_db_engine = create_rag_db_engine(settings=settings)
-    rag_db_session_factory = create_session_factory(rag_db_engine)
+    rag_db_engine = get_rag_db_engine(settings=settings)
+    rag_db_session_factory = get_session_factory(rag_db_engine)
 
-    redis_client = _create_redis_client(settings=settings)
-    vector_store = _create_vector_store(settings=settings)
+    redis_client = create_redis_client(settings=settings)
+    vector_store = create_vector_store(settings=settings)
     chat_llm = ChatOpenAI(model="gpt-4o-mini")
     vision_llm = ChatOpenAI(model="gpt-4o").with_structured_output(
         ImageDescriptions

@@ -15,6 +15,8 @@ class ChatRequestHistoryRepository:
     ) -> None:
         self.db = db
 
+    
+
     async def ensure_table(self) -> None:
         create_table_query = text(
             """

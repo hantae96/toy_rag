@@ -1,9 +1,11 @@
 from collections.abc import AsyncGenerator
 from typing import Annotated
 
+import chromadb
 from fastapi import Depends, Request
 from langchain_chroma import Chroma
 from langchain_core.runnables import Runnable
+from langchain_ollama import OllamaEmbeddings
 from redis import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -19,7 +21,7 @@ def get_manual_db_session_factory(request: Request) -> async_sessionmaker[AsyncS
 
 
 def get_rag_db_session_factory(
-    request: Request,
+    request: Request
 ) -> async_sessionmaker[AsyncSession]:
     return request.app.state.rag_db_session_factory
 
@@ -56,3 +58,31 @@ def get_chat_llm(request: Request) -> Runnable:
 
 def get_vision_llm(request: Request) -> Runnable:
     return request.app.state.vision_llm
+
+def create_redis_client(settings: Settings) -> Redis:
+  redis_client = Redis(
+      host=settings.REDIS_HOST.strip(),
+      port=settings.REDIS_PORT,
+      db=settings.REDIS_DB,
+      password=settings.REDIS_PASSWORD,
+      ssl=settings.REDIS_SSL,
+      decode_responses=True,
+      socket_timeout=5,
+      socket_connect_timeout=5,
+  )
+  redis_client.ping()
+  return redis_client
+
+
+def create_vector_store(settings: Settings) -> Chroma:
+  embeddings = OllamaEmbeddings(model="bge-m3")
+  chroma_client = chromadb.HttpClient(
+      host=settings.CHROMA_HOST,
+      port=settings.CHROMA_PORT,
+      ssl=settings.CHROMA_SSL,
+  )
+  return Chroma(
+      collection_name=settings.CHROMA_COLLECTION_NAME,
+      embedding_function=embeddings,
+      client=chroma_client,
+  )

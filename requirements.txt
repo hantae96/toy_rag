@@ -24,3 +24,4 @@ redis
 langsmith[openai-agents]
 opencv-python
 langchain-ollama
+markdownify
