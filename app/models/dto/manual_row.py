@@ -9,3 +9,4 @@ class ManualRow(BaseModel):
     version: int | str
     title: str
     content: str
+    writed_by : str

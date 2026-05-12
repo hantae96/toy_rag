@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(& \"c:\\\\Users\\\\IT\\\\Desktop\\\\study\\\\python\\\\project\\\\.venv\\\\Scripts\\\\python.exe\" -c \"import pydantic_settings; print\\(pydantic_settings.__version__\\)\" 2>&1)"
+    ]
+  }
+}

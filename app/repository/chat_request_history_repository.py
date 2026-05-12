@@ -1,18 +1,11 @@
-from typing import Annotated
-
-from fastapi import Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config.core_dependencies import get_rag_db
 from app.models.dto.chat_request_history import ChatRequestHistory
 
 
 class ChatRequestHistoryRepository:
-    def __init__(
-        self,
-        db: Annotated[AsyncSession, Depends(get_rag_db)],
-    ) -> None:
+    def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
     

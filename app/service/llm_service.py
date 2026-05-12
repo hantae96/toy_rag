@@ -8,15 +8,13 @@ import numpy as np
 import cv2
 import re
 
-from typing import Annotated, AsyncGenerator, cast
-from fastapi import Depends
+from typing import AsyncGenerator, cast
 from langchain.messages import HumanMessage
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import Runnable
 from langsmith import traceable
 
-from app.config.core_dependencies import get_chat_llm, get_vision_llm
 from app.models.api.chat_models import ApiResponse, ChatAnswer
 from app.models.api.image_models import ImageDescriptions
 
@@ -25,8 +23,8 @@ logger = logging.getLogger(__name__)
 class LlmService:
     def __init__(
         self,
-        chat_llm: Annotated[Runnable, Depends(get_chat_llm)],
-        vision_llm: Annotated[Runnable, Depends(get_vision_llm)],
+        chat_llm: Runnable,
+        vision_llm: Runnable,
     ) -> None:
         self.llm = chat_llm
         self.vision_llm = vision_llm
@@ -97,7 +95,7 @@ class LlmService:
             )
         
         except Exception as e:
-            logger.info(f"구조화 출력 파싱 실패, 일반 출력으로 fallback: {e}")
+            logger.warning("구조화 출력 파싱 실패, 일반 출력으로 fallback: %s", e)
             raw = self.stream_chain.invoke(
                 {
                     "context": context,

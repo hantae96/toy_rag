@@ -1,78 +1,41 @@
-from contextlib import asynccontextmanager
 import logging
+from contextlib import asynccontextmanager
 
-import chromadb
 from fastapi import FastAPI
-from langchain_chroma import Chroma
-from langchain_ollama import OllamaEmbeddings
 from langchain_openai import ChatOpenAI
-from redis import Redis
+from pydantic import SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.config.core_dependencies import create_redis_client, create_vector_store
-from app.config.env_setting import Settings
-from app.core.database import (
-    get_manual_db_engine,
-    get_rag_db_engine,
-    get_session_factory,
+from app.config.dependencies import create_redis_client, create_vector_store, get_settings
+from app.core.database import get_manual_db_engine, get_rag_db_engine, get_session_factory
+from app.middleware.global_exception_handler import (
+    ErrorHandlerMiddleware,
+    RequestIdFilter,
+    RequestIdMiddleware,
 )
 from app.models.api.image_models import ImageDescriptions
-from app.repository.cache_repository import CacheRepository
 from app.repository.chat_request_history_repository import ChatRequestHistoryRepository
-from app.repository.manual_repository import ManualRepository
 from app.repository.preprocess_doc_repository import PreprocessDocRepository
 from app.router.chat_router import router as chat_router
-from app.service.document_chunking_service import DocumentChunkingService
-from app.service.document_sync_service import DocumentSyncService
-from app.service.llm_service import LlmService
 
 logging.basicConfig(
     level=logging.INFO,
-    format="[%(levelname)s] %(name)s - %(message)s - %(asctime)s ",
+    format="[%(levelname)s] %(name)s [%(request_id)s] - %(message)s - %(asctime)s",
 )
+logging.getLogger().addFilter(RequestIdFilter())
 
-logging.getLogger().setLevel(logging.INFO)
 
-
-async def _run_startup_sync(
-    settings: Settings,
-    manual_db_session_factory: async_sessionmaker[AsyncSession],
+async def _ensure_tables(
     rag_db_session_factory: async_sessionmaker[AsyncSession],
-    redis_client: Redis,
-    vector_store: Chroma,
-    chat_llm: ChatOpenAI,
-    vision_llm,
 ) -> None:
-    async with manual_db_session_factory() as manual_db, rag_db_session_factory() as rag_db:
-        manual_repository = ManualRepository(db=manual_db)
-        preprocess_doc_repository = PreprocessDocRepository(db=rag_db)
-        chat_request_history_repository = ChatRequestHistoryRepository(db=rag_db)
-
-        await preprocess_doc_repository.ensure_table()
-        await chat_request_history_repository.ensure_table()
-
-        document_sync_service = DocumentSyncService(
-            manual_repository=manual_repository,
-            preprocess_doc_repository=preprocess_doc_repository,
-            document_cache_repository=CacheRepository(
-                redis_client=redis_client,
-                settings=settings,
-                cache_prefix=settings.REDIS_DOC_CACHE_KEY,
-            ),
-            llm_service=LlmService(
-                chat_llm=chat_llm,
-                vision_llm=vision_llm,
-            ),
-            chunking_service=DocumentChunkingService(),
-            vector_store=vector_store,
-            settings=settings,
-        )
-        await document_sync_service.load_documents()
+    async with rag_db_session_factory() as rag_db:
+        await PreprocessDocRepository(db=rag_db).ensure_table()
+        await ChatRequestHistoryRepository(db=rag_db).ensure_table()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    settings = Settings()  # type: ignore[call-arg] Setting은 런타임에서 처리
+    settings = get_settings()
 
     manual_db_engine = get_manual_db_engine(settings=settings)
     manual_db_session_factory = get_session_factory(manual_db_engine)
@@ -82,22 +45,15 @@ async def lifespan(app: FastAPI):
 
     redis_client = create_redis_client(settings=settings)
     vector_store = create_vector_store(settings=settings)
-    chat_llm = ChatOpenAI(model="gpt-4o-mini")
-    vision_llm = ChatOpenAI(model="gpt-4o").with_structured_output(
-        ImageDescriptions
-    )
 
-    await _run_startup_sync(
-        settings=settings,
-        manual_db_session_factory=manual_db_session_factory,
-        rag_db_session_factory=rag_db_session_factory,
-        redis_client=redis_client,
-        vector_store=vector_store,
-        chat_llm=chat_llm,
-        vision_llm=vision_llm,
-    )
+    api_key = SecretStr(settings.OPENAI_API_KEY)
+    chat_llm = ChatOpenAI(model=settings.CHAT_LLM_MODEL, api_key=api_key)
+    vision_llm = ChatOpenAI(
+        model=settings.VISION_LLM_MODEL, api_key=api_key
+    ).with_structured_output(ImageDescriptions)
 
-    app.state.settings = settings
+    await _ensure_tables(rag_db_session_factory=rag_db_session_factory)
+
     app.state.manual_db_engine = manual_db_engine
     app.state.manual_db_session_factory = manual_db_session_factory
     app.state.rag_db_engine = rag_db_engine
@@ -115,5 +71,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(ErrorHandlerMiddleware)
+app.add_middleware(RequestIdMiddleware)
 
 app.include_router(chat_router)

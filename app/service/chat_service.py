@@ -1,10 +1,10 @@
 import logging
 import time
 
-from typing import Annotated, AsyncGenerator
+from typing import AsyncGenerator
 
-from fastapi import Depends
 from fastapi.concurrency import run_in_threadpool
+from langsmith import traceable
 
 from app.models.api.chat_models import ApiResponse
 from app.service.document_sync_service import DocumentSyncService
@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 class ChatService:
     def __init__(
         self,
-        document_sync_service: Annotated[DocumentSyncService, Depends()],
-        llm_service: Annotated[LlmService, Depends()],
+        document_sync_service: DocumentSyncService,
+        llm_service: LlmService,
     ) -> None:
         self.document_sync_service = document_sync_service
         self.llm_service = llm_service
@@ -25,6 +25,7 @@ class ChatService:
     async def load_documents(self) -> None:
         await self.document_sync_service.load_documents()
 
+    @traceable
     async def ask(self, question: str) -> ApiResponse:
         context = await self.document_sync_service.build_context(question)
         return await run_in_threadpool(
@@ -33,6 +34,7 @@ class ChatService:
             context,
         )
 
+    @traceable 
     async def ask_stream(self, question: str) -> AsyncGenerator[str, None]:
         
         context_start = time.perf_counter()

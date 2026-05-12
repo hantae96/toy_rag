@@ -1,21 +1,18 @@
 import logging
-from typing import Annotated
+import re
+from markdownify import markdownify as md
 
 from bs4 import BeautifulSoup
-from bs4.element import NavigableString, Tag, Comment
-from fastapi import Depends
+from bs4.element import Comment
 from fastapi.concurrency import run_in_threadpool
 
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
 
-from app.config.core_dependencies import get_settings, get_vector_store
 from app.config.env_setting import Settings
 from app.models.dto.manual_row import ManualRow
 from app.models.dto.sync_doc import Manual
-from app.repository.cache_repository import (
-    CacheRepository,
-)
+from app.repository.cache_repository import CacheRepository
 from app.repository.manual_repository import ManualRepository
 from app.repository.preprocess_doc_repository import PreprocessDocRepository
 from app.service.document_chunking_service import DocumentChunkingService
@@ -26,17 +23,17 @@ logger = logging.getLogger(__name__)
 class DocumentSyncService:
     def __init__(
         self,
-        manual_repository: Annotated[ManualRepository, Depends()],
-        preprocess_doc_repository: Annotated[PreprocessDocRepository, Depends()],
-        document_cache_repository: Annotated[CacheRepository, Depends()],
-        llm_service: Annotated[LlmService, Depends()],
-        chunking_service: Annotated[DocumentChunkingService, Depends()],
-        vector_store: Annotated[Chroma, Depends(get_vector_store)],
-        settings: Annotated[Settings, Depends(get_settings)],
+        manual_repository: ManualRepository,
+        preprocess_doc_repository: PreprocessDocRepository,
+        document_cache_repository: CacheRepository,
+        llm_service: LlmService,
+        chunking_service: DocumentChunkingService,
+        vector_store: Chroma,
+        settings: Settings,
     ) -> None:
         
         self.document_cache_repository = document_cache_repository
-        self.manual_repository = manual_repository 
+        self.manual_repository = manual_repository
         self.preprocess_doc_repository = preprocess_doc_repository
 
         self.llm_service = llm_service
@@ -49,49 +46,39 @@ class DocumentSyncService:
         self.max_chunks_per_doc = 2
 
     async def load_documents(self) -> None:
-        latest_rows = await self.manual_repository.load_all_manual_rows()
+        # latest_rows = await self.manual_repository.load_all_manual_rows()
 
-        # 나중에 여기서 문서 로드 및 파싱 하도록 변경
+        # # 나중에 여기서 문서 로드 및 파싱 하도록 변경
 
-        latest_row_by_id = {str(row.id): row for row in latest_rows}
-        latest_doc_ids = set(latest_row_by_id.keys())
+        # latest_row_by_id = {str(row.id): row for row in latest_rows}
+        # latest_doc_ids = set(latest_row_by_id.keys())
 
-        cached_doc_ids = await run_in_threadpool(
-            self.document_cache_repository.get_doc_ids
-        )
+        # cached_doc_ids =  self.document_cache_repository.get_doc_ids()
 
-        removed_doc_ids = sorted(cached_doc_ids - latest_doc_ids)
-        new_doc_ids = sorted(latest_doc_ids - cached_doc_ids)
+        # # 변경이 있는 문서 ID
+        # removed_doc_ids = sorted(cached_doc_ids - latest_doc_ids)
+        # new_doc_ids = sorted(latest_doc_ids - cached_doc_ids)
 
-        if removed_doc_ids:
-            await run_in_threadpool(self._delete_docs_from_vector_store, removed_doc_ids)
-            await run_in_threadpool(
-                self.document_cache_repository.delete_doc_ids,
-                removed_doc_ids,
-            )
+        # if removed_doc_ids:
+        #     self._delete_docs_from_vector_store(removed_doc_ids)
+        #     self.document_cache_repository.delete_doc_ids(removed_doc_ids)
 
-        docs_to_add: list[Manual] = []
-        for doc_id in new_doc_ids:
-            manual = self._prepare_doc_from_row(row=latest_row_by_id[doc_id])
-            docs_to_add.append(manual)
+        # docs_to_add: list[Manual] = []
+        # for doc_id in new_doc_ids:
+        #     manual = self._prepare_doc_from_row(row=latest_row_by_id[doc_id])
+        #     docs_to_add.append(manual)
 
-        if docs_to_add:
-            chunk_documents = await self._chunk_docs_for_vector_store(docs_to_add)
+        # if docs_to_add:
+        #     chunk_documents = await self._chunk_docs_for_vector_store(docs_to_add)
             
-            if chunk_documents:
-                # 각 청크의 Document.id를 미리 채워두었기 때문에 ids 인자를 따로 넘기지 않는다.
-                await run_in_threadpool(
-                    self.vector_store.add_documents,
-                    chunk_documents,
-                )
+        #     if chunk_documents:
+        #       # 각 청크의 Document.id를 미리 채워두었기 때문에 ids 인자를 따로 넘기지 않는다.
+        #       self.vector_store.add_documents(chunk_documents)
 
-            # 청크된 문서 캐쉬 갱신
-            inserted_doc_ids = {str(doc.metadata["doc_id"]) for doc in chunk_documents}
-            if inserted_doc_ids:
-                await run_in_threadpool(
-                    self.document_cache_repository.add_doc_ids,
-                    sorted(inserted_doc_ids),
-                )
+        #     # 청크된 문서 캐쉬 갱신
+        #     inserted_doc_ids = {str(doc.metadata["doc_id"]) for doc in chunk_documents}
+        #     if inserted_doc_ids:
+        #       self.document_cache_repository.add_doc_ids(sorted(inserted_doc_ids))
 
         logger.info("메뉴얼 DB <-> 벡터 DB 동기화 완료")
 
@@ -102,8 +89,9 @@ class DocumentSyncService:
 
     def _prepare_doc_from_row(self, row: ManualRow) -> Manual:
         content_sequence = self._extract_content_sequence(str(row.content))
-
-        clean_text = self._extract_text_from_sequence(content_sequence)
+        
+        
+        clean_text = f"제목: {row.title}\n" + f"작성자: {row.writed_by}\n" + "본문:\n" + self._extract_text_from_sequence(content_sequence)
         image_urls = self._extract_image_urls_from_sequence(content_sequence)
         
         return Manual(
@@ -114,8 +102,8 @@ class DocumentSyncService:
             doc_url=f"{self.image_base_url}/general/manual/{row.category_id}/view/{row.post_id}",
             text=clean_text,
             image_urls=image_urls,
-            image_descriptions=[],
             content_sequence=content_sequence,
+            writed_by=row.writed_by
         )
 
     async def _chunk_docs_for_vector_store(
@@ -124,15 +112,8 @@ class DocumentSyncService:
         chunk_documents: list[Document] = []
 
         for doc in docs:
-            # 텍스트 + 이미지 포함 설명
-            rendered = self._render_sequence_for_embedding_with_descriptions(
-                sequence=doc.content_sequence,
-                image_descriptions=doc.image_descriptions,
-            )
-
-            await self.preprocess_doc_repository.upsert_doc(doc.id, rendered)
-            
-            doc_chunks = self.chunking_service.build_chunks(rendered)
+            # await self.preprocess_doc_repository.upsert_doc(doc.id,doc.text)
+            doc_chunks = self.chunking_service.build_chunks(doc.text)
             if not doc_chunks:
                 continue
 
@@ -182,49 +163,46 @@ class DocumentSyncService:
 
         return "\n\n".join(context_parts)
 
-    def _ensure_image_descriptions(self, docs: list[Manual]) -> None:
-        for doc in docs:
-            image_urls = doc.image_urls
-            existing_descriptions = doc.image_descriptions
-            if len(existing_descriptions) == len(image_urls):
-                continue
-
-            doc.image_descriptions = self.llm_service.describe_images(image_urls=image_urls)
-
     def _extract_content_sequence(self, html: str) -> list[dict[str, str]]:
-        if not html:
-            return []
+      if not html:
+          return []
 
-        soup = BeautifulSoup(html, "html.parser")
-        for tag in soup(["script", "style"]):
-            tag.decompose()
+      soup = BeautifulSoup(html, "html.parser")
 
+      # script, style, 주석 제거
+      for tag in soup(["script", "style"]):
+          tag.decompose()
+      for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
+          comment.extract()
 
-        for comment in soup.find_all(string=lambda text: isinstance(text,Comment)):
-            comment.extract()
+      # 이미지 URL 수집 + img 태그를 플레이스홀더로 교체
+      image_urls = []
+      for img in soup.find_all("img"):
+          src = str(img.attrs.get("src", ""))
+          if not src:
+              img.decompose()
+              continue
+          
+          url = self._build_image_url(src)
+          
+          index = len(image_urls)  # append 전에 인덱스 확정
+          image_urls.append(url)
+          
+          img.replace_with(f"{{IMAGE_{index}}}")  # 0, 1, 2... 순서대로
 
-        sequence: list[dict[str, str]] = []
-        for node in soup.descendants:
-            if isinstance(node, Tag) and node.name == "img":
-                if "src" not in node.attrs:
-                    continue
-                src = str(node["src"]).strip()
-                if not src:
-                    continue
-                sequence.append(
-                    {"type": "image", "value": self._build_image_url(src)}
-                )
-                continue
+      # HTML → Markdown 변환
+      markdown_text = md(str(soup), heading_style="ATX")
 
-            if isinstance(node, NavigableString):
-                if isinstance(node,Comment):
-                    continue
+      # # 이미지 설명 생성 (있을 경우)
+      # if image_urls:
+      #     descriptions = self.llm_service.describe_images(image_urls)
+      #     for i, desc in enumerate(descriptions):
+      #         # 플레이스홀더를 실제 설명으로 교체
+      #         markdown_text = markdown_text.replace(
+      #             f"{{IMAGE_{i}}}", f"\n[이미지 설명: {desc}]\n"
+      #         )
 
-                text = " ".join(str(node).split())
-                if text:
-                    sequence.append({"type": "text", "value": text})
-
-        return sequence
+      return [{"type": "text", "value": markdown_text}]
 
     def _extract_text_from_sequence(self, sequence: list[dict[str, str]]) -> str:
         text_parts: list[str] = []
@@ -246,32 +224,6 @@ class DocumentSyncService:
                     image_urls.append(value)
         return image_urls
 
-    def _render_sequence_for_embedding_with_descriptions(
-        self, sequence: list[dict[str, str]], image_descriptions: list[str]
-    ) -> str:
-        parts: list[str] = []
-        image_index = 0
-
-        for block in sequence:
-            block_type = block["type"]
-            value = str(block["value"]).strip()
-            if not value:
-                continue
-
-            if block_type == "text":
-                parts.append(value)
-            elif block_type == "image":
-                if image_index < len(image_descriptions):
-                    description = str(image_descriptions[image_index]).strip()
-                    if description:
-                        parts.append(f"[이미지 설명] {description}")
-                    else:
-                        parts.append("[이미지]")
-                else:
-                    parts.append("[이미지]")
-                image_index += 1
-
-        return "\n".join(parts)
 
     def _build_image_url(self, src: str) -> str:
         raw_src = str(src).strip()

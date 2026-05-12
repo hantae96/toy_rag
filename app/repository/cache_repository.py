@@ -1,11 +1,8 @@
 import logging
-from typing import Annotated
 from typing import cast
 
-from fastapi import Depends
 from redis import Redis
 
-from app.config.core_dependencies import create_redis_client, get_settings
 from app.config.env_setting import Settings
 
 logger = logging.getLogger(__name__)
@@ -14,23 +11,21 @@ logger = logging.getLogger(__name__)
 class CacheRepository:
     def __init__(
         self,
-        redis_client: Annotated[Redis, Depends(create_redis_client)],
-        settings: Annotated[Settings, Depends(get_settings)],
-        cache_prefix: str | None = None,
+        redis_client: Redis,
+        settings: Settings,
+        cache_prefix: str,
     ) -> None:
         self.redis_client = redis_client
         self.cache_prefix = cache_prefix or settings.REDIS_DOC_CACHE_KEY
         self.index_key = f"{self.cache_prefix}:index"
 
     def get_doc_ids(self) -> set[str]:
-        try:
-            members_result = self.redis_client.smembers(self.index_key)
-            members = cast(set[str], members_result)
-            return {str(member).strip() for member in members if str(member).strip()}
-
-        except Exception as e:
-            logger.info(f"Redis 인덱스 조회 실패: {e}")
-            return set()
+      try:
+          members: set[str] = self.redis_client.smembers(self.index_key)  # type: ignore[misc]
+          return {m.strip() for m in members if m.strip()}
+      except Exception as e:
+          logger.info(f"Redis 인덱스 조회 실패: {e}")
+          return set()
 
     def add_doc_ids(self, doc_ids: list[str]) -> None:
         if not doc_ids:

@@ -1,3 +1,4 @@
+pydantic-settings
 langchain
 langchain-text-splitters
 langchain-openai

@@ -13,7 +13,7 @@ from app.config.dependencies import (
 from app.models.api.chat_models import ApiResponse, ChatRequest
 from app.repository.chat_request_history_repository import ChatRequestHistoryRepository
 from app.service.chat_service import ChatService
-from langsmith import traceable
+
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -42,21 +42,17 @@ def health() -> dict[str, str]:
 
 
 @router.post("/chat", response_model=ApiResponse)
-@traceable
 async def chat(
     req: ChatRequest,
     service: ChatService = Depends(get_chat_service),
-    chat_request_history_repository: ChatRequestHistoryRepository = Depends(
-        get_chat_request_history_repository
-    ),
+    history_repository: ChatRequestHistoryRepository = Depends(get_chat_request_history_repository),
 ) -> ApiResponse:
     answer_start = time.perf_counter()
     response = await service.ask(req.question)
-    answer_end = time.perf_counter()
-    response_time_ms = int((answer_end - answer_start) * 1000)
+    response_time_ms = int((time.perf_counter() - answer_start) * 1000)
 
     try:
-        await chat_request_history_repository.save_chat_request_history(
+        await history_repository.save_chat_request_history(
             question=req.question,
             answer=response.answer,
             response_time_ms=response_time_ms,
@@ -66,13 +62,13 @@ async def chat(
 
     return response
 
+
 @router.get("/chat/stream")
-@traceable
 async def streaming_sse(
     question: str = Query(..., min_length=1),
     service: ChatService = Depends(get_chat_service),
 ) -> StreamingResponse:
-    logger.info(f"question : {question}")
+    logger.info("question : %s", question)
     return StreamingResponse(
         _sse_stream(question, service),
         media_type="text/event-stream",
