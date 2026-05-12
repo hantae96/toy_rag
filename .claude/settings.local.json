@@ -3,7 +3,8 @@
     "allow": [
       "PowerShell(& \"c:\\\\Users\\\\IT\\\\Desktop\\\\study\\\\python\\\\project\\\\.venv\\\\Scripts\\\\python.exe\" -c \"import pydantic_settings; print\\(pydantic_settings.__version__\\)\" 2>&1)",
       "Bash(docker volume *)",
-      "Bash(findstr chroma *)"
+      "Bash(findstr chroma *)",
+      "Bash(del \"c:\\\\Users\\\\IT\\\\Desktop\\\\study\\\\python\\\\project\\\\app\\\\config\\\\logging_config.py\")"
     ]
   }
 }

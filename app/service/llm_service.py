@@ -3,6 +3,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 import base64
 import logging
+import time
 import requests
 import numpy as np
 import cv2
@@ -33,22 +34,30 @@ class LlmService:
 
         self.structured_prompt = ChatPromptTemplate.from_template(
             """
-                너는 사내 메뉴얼 문서만 근거로 답변하는 assistant다.
-                아래 규칙을 바탕으로 질문에 답변해라.
-                1. 참고 문서에 없는 내용은 추측하지 말고 종료해라.
-                2. reference_urls에는 실제로 근거로 사용한 doc_url만 담아라.
-                3. 답변 근거 URL이 없으면 reference_urls는 빈 배열로 반환해라.
-                4. 만약 [이미지] 안에 내용을 참고하여 답변한다면, answer에 "해당 이미지를 직접 확인해주세요." 라는 문구를 추가해라.
-                5. 반드시 아래 형식 지시를 따라 JSON으로만 응답해라.
+                너는 사내 매뉴얼 문서만 근거로 답변하는 assistant다.
+                아래 규칙을 엄격히 준수하여 답변해라.
 
-                [형식 지시]
-                {format_instructions}
+                [답변 규칙]
+                1. 반드시 [참고 문서] 내용만 근거로 답변하고, 문서에 없는 내용은 "제공된 매뉴얼에서 해당 내용을 찾을 수 없습니다."라고 답한 후 종료해라.
+                2. 추측, 일반 상식, 외부 지식을 절대 사용하지 마라.
+                3. 답변은 간결하고 구조적으로 작성하되, 절차/단계가 있으면 번호 매기기로 표기해라.
+                4. 전문용어나 약어가 있으면 매뉴얼에 정의된 의미를 그대로 사용해라.
+
+                [이미지 참조 규칙]
+                5. 참고 문서의 [이미지] 내용을 근거로 답변한 경우, 답변 본문 마지막에 "※ 정확한 화면은 해당 이미지를 직접 확인해주세요." 문구를 추가해라.
+
+                [출처 표기 규칙]
+                6. 출처가 존재하는 경우, 답변 가장 마지막 줄에 아래 형식으로 표기해라.
+                  형식: 출처: [문서제목](doc_url)
+                7. 여러 문서를 참고한 경우 모두 나열해라.
 
                 [참고 문서]
                 {context}
 
                 [질문]
                 {question}
+
+                [답변]
             """
         )
         self.structured_chain = (
@@ -61,17 +70,30 @@ class LlmService:
 
         self.stream_prompt = ChatPromptTemplate.from_template(
             """
-                너는 사내 메뉴얼 문서만 근거로 답변하는 assistant다.
-                아래 규칙을 바탕으로 질문에 답변해라.
-                1. 참고 문서에 없는 내용은 추측하지 말고 종료해라.
-                2. 출처가 존재하는 경우, 답변 마지막 줄에 반드시 문서 제목(title) + 링크(doc_url) 로 표기해라.
-                3. 만약 [이미지] 안에 내용을 참고하여 답변한다면, "해당 이미지를 직접 확인해주세요." 라는 문구를 추가해라
+                너는 사내 매뉴얼 문서만 근거로 답변하는 assistant다.
+                아래 규칙을 엄격히 준수하여 답변해라.
+
+                [답변 규칙]
+                1. 반드시 [참고 문서] 내용만 근거로 답변하고, 문서에 없는 내용은 "제공된 매뉴얼에서 해당 내용을 찾을 수 없습니다."라고 답한 후 종료해라.
+                2. 추측, 일반 상식, 외부 지식을 절대 사용하지 마라.
+                3. 답변은 간결하고 구조적으로 작성하되, 절차/단계가 있으면 번호 매기기로 표기해라.
+                4. 전문용어나 약어가 있으면 매뉴얼에 정의된 의미를 그대로 사용해라.
+
+                [이미지 참조 규칙]
+                5. 참고 문서의 [이미지] 내용을 근거로 답변한 경우, 답변 본문 마지막에 "※ 정확한 화면은 해당 이미지를 직접 확인해주세요." 문구를 추가해라.
+
+                [출처 표기 규칙]
+                6. 출처가 존재하는 경우, 답변 가장 마지막 줄에 아래 형식으로 표기해라.
+                  형식: 출처: [문서제목](doc_url)
+                7. 여러 문서를 참고한 경우 모두 나열해라.
 
                 [참고 문서]
                 {context}
 
                 [질문]
                 {question}
+
+                [답변]
             """
         )
         self.stream_chain = self.stream_prompt | self.llm
@@ -122,20 +144,12 @@ class LlmService:
                 yield str(chunck.content)
 
     @traceable(name="llm_service.describe_images", run_type="chain")
-    def describe_images(self, image_urls: list[str], batch_size: int = 5) -> list[str]:
-        results: list[str] = []
-        # for i in range(0, len(image_urls), batch_size):
-        #     batch = image_urls[i : i + batch_size]
-        #     descriptions = self._describe_images_batch(batch)
-        #     results.extend(descriptions)
-        return results
+    def describe_images(self, image_urls: list[str]) -> list[str]:
+        return [self._describe_single_image(url) for url in image_urls]
 
-    @traceable(name="llm_service.describe_images_batch", run_type="chain")
-    def _describe_images_batch(self, image_urls: list[str]) -> list[str]:
-        try:
-            content = []
-
-            for image_url in image_urls:
+    def _describe_single_image(self, image_url: str, max_retries: int = 3) -> str:
+        for attempt in range(max_retries):
+            try:
                 image_data = self._preprocess_image_from_url(image_url)
 
                 if image_url.lower().endswith(".png"):
@@ -145,48 +159,57 @@ class LlmService:
                 else:
                     media_type = "image/jpeg"
 
-                content.append(
+                content = [
                     {
                         "type": "image_url",
                         "image_url": {
                             "url": f"data:{media_type};base64,{image_data}",
                             "detail": "high",
                         },
-                    }
+                    },
+                    {
+                        "type": "text",
+                        "text": """
+                            당신은 사내 업무 매뉴얼의 스크린샷을 분석하는 전문가입니다.
+                            첨부된 이미지가 "어떤 화면이고 무엇을 하는 화면인지"만 간결하게 설명해주세요.
+
+                            # 출력 항목
+
+                            ## 1. 화면 식별
+                            - 시스템/프로그램명: (예: SAP, 자체 ERP, MES 등 추정)
+                            - 화면명: 상단 타이틀/탭에 표시된 명칭
+
+                            ## 2. 화면 요약
+                            - 이 화면이 어떤 업무를 위한 것인지 2~3문장으로 요약
+                            - 화면에 표시된 핵심 데이터의 주제 (예: 자재 마스터, 구매 단가 정보 등)
+
+                            # 작성 규칙
+                            - 한국어로 작성
+                            - 세부 버튼, 입력 필드, 레이아웃 설명은 생략
+                            - 추측인 경우 "추정"으로 표기
+                            - 식별 불가능한 항목은 "확인 불가"로 표기
+                            - 약어(SAP, ROH 등)는 괄호로 부연
+                        """,
+                    },
+                ]
+
+                result = cast(
+                    ImageDescriptions, self.vision_llm.invoke([HumanMessage(content=content)])
                 )
 
-            content.append(
-                {
-                    "type": "text",
-                    "text": """
-                                회사의 매뉴얼에 부가설명을 위한 이미지 정보야.
-                                이미지가 여러 장이면 각 이미지를 순서대로 설명해줘.
+                if result.images:
+                    return result.images[0].description
+                return ""
 
-                                설명 방법
-                                1. 이미지에 문자가 있으면 추출한 다음 해당 내용을 기반으로 이미지가 어떤 내용인지 포괄적으로 설명해줘.
-                                    너무 자세한 숫자는 내용에 기입할 필요없고, 해당 이미지가 어떤 주제를 가지고 있는지를 분석해줘
-                                2. 이미지가 표 형식인 경우, 표의 구조를 참조해서 이미지를 해석해줘
-                                3. 이미지 내에 빨간 네모 박스 테두리는 강조를 위한 표시야.
-                                4. 각 이미지 설명은 반드시 "[이미지 1]", "[이미지 2]" 형식으로 구분해줘.
-                            """,
-                }
-            )
-
-            result = cast(
-                ImageDescriptions, self.vision_llm.invoke([HumanMessage(content=content)])
-            )
-
-            sorted_images = sorted(result.images, key=lambda x: x.index)
-            descriptions = [img.description for img in sorted_images]
-
-            if len(descriptions) != len(image_urls):
-                return [""] * len(image_urls)
-
-            return descriptions
-
-        except Exception as e:
-            logger.error(f"이미지 벌크 요약 실패 → {e}")
-            return [""] * len(image_urls)
+            except Exception as e:
+                if "rate_limit_exceeded" in str(e) and attempt < max_retries - 1:
+                    wait = 2 ** attempt
+                    logger.warning("Rate limit 초과, %d초 후 재시도 (%d/%d)", wait, attempt + 1, max_retries)
+                    time.sleep(wait)
+                else:
+                    logger.error("이미지 설명 실패: %s → %s", image_url, e)
+                    return ""
+        return ""
 
     
     def _preprocess_image_from_url(self, image_url: str) -> str:
@@ -204,9 +227,9 @@ class LlmService:
 
         # 3. 투명 배경 → 흰 배경으로 합성
         if img.ndim == 3 and img.shape[2] == 4:
-            alpha = img[:, :, 3] / 255.0
-            white_bg = np.ones_like(img[:, :, :3], dtype=np.uint8) * 255
-            img = (white_bg * (1 - alpha[..., None]) + img[:, :, :3] * alpha[..., None]).astype(np.uint8)
+            alpha = img[:, :, 3].astype(np.float64) / 255.0
+            white_bg = np.full_like(img[:, :, :3], 255, dtype=np.float64)
+            img = (white_bg * (1 - alpha[..., None]) + img[:, :, :3].astype(np.float64) * alpha[..., None]).astype(np.uint8)
 
         # 4. base64 인코딩
         _, buffer = cv2.imencode('.png', img)

@@ -38,7 +38,7 @@ class ManualRepository:
             JOIN post_approval AS b ON a.id = b.post_history_id
             JOIN `user` AS c ON a.user_id = c.id
             WHERE a.rn = 1
-              -- AND a.id = 595
+              AND a.id = 595
             	AND b.approval = 2 -- 최종 승인이 난 문서만 호출
             ORDER BY a.id
             """
