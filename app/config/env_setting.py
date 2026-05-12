@@ -51,6 +51,8 @@ class Settings(BaseSettings):
     CHROMA_PORT: int = 8000
     CHROMA_SSL: bool = False
     CHROMA_COLLECTION_NAME: str = "manual_chunks"
+    EMBEDDING_PROVIDER: str = "ollama"  # ollama | openai
+    EMBEDDING_MODEL: str = "bge-m3"
 
     # Image
     IMAGE_BASE_URL: str

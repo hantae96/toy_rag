@@ -1,0 +1,7 @@
+HTTP/1.1 410 Gone
+content-type: application/json
+chroma-trace-id: 00000000000000000000000000000000
+content-length: 83
+date: Tue, 12 May 2026 05:34:58 GMT
+
+{"error":"Unimplemented","message":"The v1 API is deprecated. Please use /v2 apis"}

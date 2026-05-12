@@ -1,6 +1,6 @@
 services:
   rag-api:
-    image: ${APP_IMAGE:-hantae/rag-api:latest}
+    image: ${APP_IMAGE:-harbor.idis.co.kr/hantae/rag-api:latest}
     container_name: rag-api
     depends_on:
       rag-redis:

@@ -33,7 +33,7 @@ class LlmService:
 
         self.structured_prompt = ChatPromptTemplate.from_template(
             """
-                너는 주어진 문서만 근거로 답변하는 assistant다.
+                너는 사내 메뉴얼 문서만 근거로 답변하는 assistant다.
                 아래 규칙을 바탕으로 질문에 답변해라.
                 1. 참고 문서에 없는 내용은 추측하지 말고 종료해라.
                 2. reference_urls에는 실제로 근거로 사용한 doc_url만 담아라.
@@ -61,7 +61,7 @@ class LlmService:
 
         self.stream_prompt = ChatPromptTemplate.from_template(
             """
-                너는 주어진 문서만 근거로 답변하는 assistant다.
+                너는 사내 메뉴얼 문서만 근거로 답변하는 assistant다.
                 아래 규칙을 바탕으로 질문에 답변해라.
                 1. 참고 문서에 없는 내용은 추측하지 말고 종료해라.
                 2. 출처가 존재하는 경우, 답변 마지막 줄에 반드시 문서 제목(title) + 링크(doc_url) 로 표기해라.
@@ -124,10 +124,10 @@ class LlmService:
     @traceable(name="llm_service.describe_images", run_type="chain")
     def describe_images(self, image_urls: list[str], batch_size: int = 5) -> list[str]:
         results: list[str] = []
-        for i in range(0, len(image_urls), batch_size):
-            batch = image_urls[i : i + batch_size]
-            descriptions = self._describe_images_batch(batch)
-            results.extend(descriptions)
+        # for i in range(0, len(image_urls), batch_size):
+        #     batch = image_urls[i : i + batch_size]
+        #     descriptions = self._describe_images_batch(batch)
+        #     results.extend(descriptions)
         return results
 
     @traceable(name="llm_service.describe_images_batch", run_type="chain")
@@ -163,8 +163,9 @@ class LlmService:
                                 이미지가 여러 장이면 각 이미지를 순서대로 설명해줘.
 
                                 설명 방법
-                                1. 이미지에 문자가 있으면 추출한 다음 해당 내용을 기반으로 어떤 이미지인지 자세하게 설명해줘
-                                2. 이미지가 표 형식인 경우, 표의 구조를 고려해서 열과 행을 기반으로 설명을 자세하게 작성해줘
+                                1. 이미지에 문자가 있으면 추출한 다음 해당 내용을 기반으로 이미지가 어떤 내용인지 포괄적으로 설명해줘.
+                                    너무 자세한 숫자는 내용에 기입할 필요없고, 해당 이미지가 어떤 주제를 가지고 있는지를 분석해줘
+                                2. 이미지가 표 형식인 경우, 표의 구조를 참조해서 이미지를 해석해줘
                                 3. 이미지 내에 빨간 네모 박스 테두리는 강조를 위한 표시야.
                                 4. 각 이미지 설명은 반드시 "[이미지 1]", "[이미지 2]" 형식으로 구분해줘.
                             """,
@@ -184,7 +185,7 @@ class LlmService:
             return descriptions
 
         except Exception as e:
-            logger.info(f"이미지 벌크 요약 실패 → {e}")
+            logger.error(f"이미지 벌크 요약 실패 → {e}")
             return [""] * len(image_urls)
 
     

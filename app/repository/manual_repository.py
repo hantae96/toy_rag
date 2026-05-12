@@ -28,7 +28,7 @@ class ManualRepository:
     async def load_all_manual_rows(self) -> list[ManualRow]:
         query = text(
             f"""
-            SELECT a.id,a.post_id,a.category_id,a.category,a.version,a.title,a.content,c.name 
+            SELECT a.id,a.post_id,a.category_id,a.category,a.version,a.title,a.content,c.name as writed_by
             FROM (
                 SELECT a.id,a.post_id,a.category as category_id, b.name AS category, a.version,a. title,a.content, a.user_id,
                     ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY version DESC) as rn
@@ -38,7 +38,7 @@ class ManualRepository:
             JOIN post_approval AS b ON a.id = b.post_history_id
             JOIN `user` AS c ON a.user_id = c.id
             WHERE a.rn = 1
-              AND a.id = 595
+              -- AND a.id = 595
             	AND b.approval = 2 -- 최종 승인이 난 문서만 호출
             ORDER BY a.id
             """
@@ -54,7 +54,7 @@ class ManualRepository:
                 content=row["content"],
                 category=row["category"],
                 category_id=row["category_id"],
-                writed_by= row["name"]
+                writed_by= row["writed_by"]
             )
             for row in rows
         ]

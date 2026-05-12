@@ -1,4 +1,3 @@
-import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -8,21 +7,16 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config.dependencies import create_redis_client, create_vector_store, get_settings
 from app.core.database import get_manual_db_engine, get_rag_db_engine, get_session_factory
-from app.middleware.global_exception_handler import (
-    ErrorHandlerMiddleware,
-    RequestIdFilter,
-    RequestIdMiddleware,
-)
+from app.config.logging_config import LoggingConfigurator
+from app.middleware.global_exception_middleware import GlobalExceptionMiddleware
+from app.middleware.request_log_middleware import RequestIdMiddleware, RequestLogMiddleware
 from app.models.api.image_models import ImageDescriptions
 from app.repository.chat_request_history_repository import ChatRequestHistoryRepository
 from app.repository.preprocess_doc_repository import PreprocessDocRepository
 from app.router.chat_router import router as chat_router
+from app.router.sync_router import router as sync_router
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="[%(levelname)s] %(name)s [%(request_id)s] - %(message)s - %(asctime)s",
-)
-logging.getLogger().addFilter(RequestIdFilter())
+LoggingConfigurator.configure()
 
 
 async def _ensure_tables(
@@ -72,7 +66,9 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-app.add_middleware(ErrorHandlerMiddleware)
+app.add_middleware(GlobalExceptionMiddleware)
+app.add_middleware(RequestLogMiddleware)
 app.add_middleware(RequestIdMiddleware)
 
 app.include_router(chat_router)
+app.include_router(sync_router)

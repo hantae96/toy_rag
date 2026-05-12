@@ -3,12 +3,11 @@ import time
 import uuid
 from contextvars import ContextVar
 
-from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
 
-logger = logging.getLogger(__name__)
+access_logger = logging.getLogger("app.access")
 
 request_id_var: ContextVar[str] = ContextVar("request_id", default="-")
 
@@ -31,18 +30,10 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
             request_id_var.reset(token)
 
 
-class ErrorHandlerMiddleware(BaseHTTPMiddleware):
+class RequestLogMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         start_time = time.perf_counter()
-        try:
-            response = await call_next(request)
-            process_time = time.perf_counter() - start_time
-            logger.info("[%s] %s %s %.3fs", request.method, response.status_code, request.url.path, process_time)
-            return response
-        except Exception as e:
-            process_time = time.perf_counter() - start_time
-            logger.error("unexpected error: %s (%.3fs)", str(e), process_time)
-            return JSONResponse(
-                status_code=500,
-                content={"success": False, "message": "서버 내부 오류가 발생했습니다."},
-            )
+        response = await call_next(request)
+        process_time = time.perf_counter() - start_time
+        access_logger.info("[%s] %s %s %.3fs", request.method, response.status_code, request.url.path, process_time)
+        return response

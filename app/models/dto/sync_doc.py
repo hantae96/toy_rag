@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass(slots=True)
@@ -9,7 +9,4 @@ class Manual:
     title: str
     doc_url: str
     text: str
-    writed_by : str
-    image_urls: list[str] = field(default_factory=list)
-    content_sequence: list[dict[str, str]] = field(default_factory=list)
-    
+    writed_by: str

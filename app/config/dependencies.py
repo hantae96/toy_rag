@@ -7,6 +7,8 @@ from fastapi import Depends, Request
 from langchain_chroma import Chroma
 from langchain_core.runnables import Runnable
 from langchain_ollama import OllamaEmbeddings
+from langchain_openai import OpenAIEmbeddings
+from pydantic import SecretStr
 from redis import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -23,7 +25,7 @@ from app.service.llm_service import LlmService
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    return Settings()  # type: ignore
 
 
 def get_manual_db_session_factory(request: Request) -> async_sessionmaker[AsyncSession]:
@@ -84,7 +86,11 @@ def create_redis_client(settings: Settings) -> Redis:
 
 
 def create_vector_store(settings: Settings) -> Chroma:
-    embeddings = OllamaEmbeddings(model="bge-m3")
+    if settings.EMBEDDING_PROVIDER == "openai":
+        embeddings = OpenAIEmbeddings(model=settings.EMBEDDING_MODEL, api_key=SecretStr(settings.OPENAI_API_KEY))
+    else:
+        embeddings = OllamaEmbeddings(model=settings.EMBEDDING_MODEL)
+
     chroma_client = chromadb.HttpClient(
         host=settings.CHROMA_HOST,
         port=settings.CHROMA_PORT,

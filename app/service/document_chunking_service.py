@@ -30,7 +30,7 @@ class DocumentChunkingService:
         return tables, remaining_text
 
     def split_for_embedding(self, text: str) -> list[str]:
-        normalized = self.normalize_text(text)
+        normalized: str = self.normalize_text(text)
         if not normalized:
             return []
 
